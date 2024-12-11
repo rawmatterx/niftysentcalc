@@ -77,9 +77,10 @@ def determine_market_movement(open_point, close_point):
         close_point (float): The expected close point based on DJI movement.
         
     Returns:
-        str: "Bullish Movement" if >2% above open,
-             "Bearish Movement" if >2% below open,
-             "Sideways/Volatile Movement" otherwise.
+        str: 
+            "Bullish Movement" if >1.5% above open,
+            "Bearish Movement" if >1.5% below open,
+            "Sideways/Volatile Movement" otherwise.
     """
     if open_point == 0:
         return "Data Error: Open point cannot be zero."
@@ -87,8 +88,8 @@ def determine_market_movement(open_point, close_point):
     difference = close_point - open_point
     pct_change = (difference / open_point) * 100
 
-    bullish_threshold = 2.0   # 2%
-    bearish_threshold = -2.0  # -2%
+    bullish_threshold = 1.5   # 1.5%
+    bearish_threshold = -1.5  # -1.5%
 
     if pct_change > bullish_threshold:
         return "Bullish Movement"
@@ -104,7 +105,7 @@ def get_market_sentiment(nifty50_close, sgx_nifty_value, dji_change_percentage):
     using the given previous close.
     
     Parameters:
-        nifty50_close (float): Previous close value (could be Nifty 50 or Nifty futures).
+        nifty50_close (float): Nifty 50 previous close value.
         sgx_nifty_value (float): SGX Nifty value at 8:45 AM.
         dji_change_percentage (float): Previous day DJI change in percentage.
         
@@ -180,20 +181,22 @@ if st.button("Analyze Nifty 50 Sentiment"):
         futures_sentiment = get_market_sentiment(futures_close, sgx_nifty_value, dji_change_percentage)
 
         if isinstance(spot_sentiment, tuple) and isinstance(futures_sentiment, tuple):
+            # Unpack results
             spot_open, spot_movement, spot_dji = spot_sentiment
             futures_open, futures_movement, futures_dji = futures_sentiment
 
+            # Format the output as requested
+            # Example format:
+            # Today, I am expecting a Gap Up Opening in the market 
+            # after which a Bullish Movement with Positive sentiment.
+            
             st.write("**Primary Scenario (Based on Nifty 50 Spot Previous Close):**")
-            st.write(f"- Market Opening Sentiment: {spot_open}")
-            st.write(f"- Expected Intraday Movement: {spot_movement}")
-            st.write(f"- DJI Influence: {spot_dji}")
-
+            st.write(f"Today, I am expecting a {spot_open} in the market after which a {spot_movement} with {spot_dji}.")
+            
             st.write("")
 
             st.write("**Alternate Scenario (Based on Nifty Futures Previous Close):**")
-            st.write(f"- Market Opening Sentiment: {futures_open}")
-            st.write(f"- Expected Intraday Movement: {futures_movement}")
-            st.write(f"- DJI Influence: {futures_dji}")
+            st.write(f"Today, I am expecting a {futures_open} in the market after which a {futures_movement} with {futures_dji}.")
 
             st.write("**Note:** This analysis is for informational purposes only and not investment advice.")
         else:
