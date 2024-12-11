@@ -175,28 +175,33 @@ if st.button("Analyze Nifty 50 Sentiment"):
     elif futures_close == 0:
         st.write("The previous close of Nifty Futures cannot be zero. Please enter a valid number.")
     else:
-        # Primary scenario based on Nifty 50 spot previous close
+        # Scenario 1 (Spot)
         spot_sentiment = get_market_sentiment(nifty50_close, sgx_nifty_value, dji_change_percentage)
-        # Alternate scenario based on Nifty Futures previous close
+        # Scenario 2 (Futures)
         futures_sentiment = get_market_sentiment(futures_close, sgx_nifty_value, dji_change_percentage)
 
         if isinstance(spot_sentiment, tuple) and isinstance(futures_sentiment, tuple):
-            # Unpack results
             spot_open, spot_movement, spot_dji = spot_sentiment
             futures_open, futures_movement, futures_dji = futures_sentiment
-
-            # Format the output as requested
-            # Example format:
-            # Today, I am expecting a Gap Up Opening in the market 
-            # after which a Bullish Movement with Positive sentiment.
             
-            st.write("**Primary Scenario (Based on Nifty 50 Spot Previous Close):**")
-            st.write(f"Today, I am expecting a {spot_open} in the market after which a {spot_movement} with {spot_dji}.")
-            
-            st.write("")
-
-            st.write("**Alternate Scenario (Based on Nifty Futures Previous Close):**")
-            st.write(f"Today, I am expecting a {futures_open} in the market after which a {futures_movement} with {futures_dji}.")
+            # Check if both scenarios are the same
+            if (spot_open == futures_open and
+                spot_movement == futures_movement and
+                spot_dji == futures_dji):
+                # Both scenarios yield the same result, so just print one scenario
+                st.write("**Possible Scenario:**")
+                st.write(f"Today, I am expecting a {spot_open} in the market after which a {spot_movement} with {spot_dji}.")
+            else:
+                # Print both scenarios
+                st.write("**Possible Scenarios:**")
+                
+                st.write("Scenario 1:")
+                st.write(f"Today, I am expecting a {spot_open} in the market after which a {spot_movement} with {spot_dji}.")
+                
+                st.write("")
+                
+                st.write("Scenario 2:")
+                st.write(f"Today, I am expecting a {futures_open} in the market after which a {futures_movement} with {futures_dji}.")
 
             st.write("**Note:** This analysis is for informational purposes only and not investment advice.")
         else:
