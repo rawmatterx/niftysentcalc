@@ -68,8 +68,8 @@ def determine_market_movement(open_point, close_point):
     difference = close_point - open_point
     pct_change = (difference / open_point) * 100
 
-    bullish_threshold = 1.5
-    bearish_threshold = -1.5
+    bullish_threshold = 1.0
+    bearish_threshold = -1.0
 
     if pct_change > bullish_threshold:
         return "Bullish Movement"
