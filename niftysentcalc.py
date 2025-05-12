@@ -1,104 +1,115 @@
 import streamlit as st
 import streamlit.components.v1 as components
 
-# ---------- Helper functions (Revised Scoring) ---------- #
+# ---------- Helper functions (Revised Scoring based on Research Documents) ---------- #
 
 def classify_market_opening(previous_close, gift_nifty_value):
+    """
+    Classifies the market opening based on the percentage difference between
+    GIFT Nifty value and the previous close.
+    Assigns points based on the gap size.
+    """
     if previous_close == 0: return "Data Error", 0
     pct_change = (gift_nifty_value - previous_close) / previous_close * 100
-    if abs(pct_change) < 0.2:
+    if abs(pct_change) < 0.2: # Threshold for flat opening
         return "Flat Opening", 0
-    elif abs(pct_change) <= 0.75: # Increased threshold slightly for gap
+    elif abs(pct_change) <= 0.75: # Threshold for normal gap
         return ("Gap Up Opening", 1) if pct_change > 0 else ("Gap Down Opening", -1)
-    else:
+    else: # Larger gaps
         return ("Huge Gap Up Opening", 2) if pct_change > 0 else ("Huge Gap Down Opening", -2)
 
 def get_us_individual_points(change_pct):
-    if change_pct > 0.2: return 1 # Broadened positive threshold slightly
-    if change_pct < -0.2: return -1 # Broadened negative threshold slightly
-    return 0
+    """ Assigns points based on an individual US market index's overnight percentage change. """
+    if change_pct > 0.2: return 1  # Positive sentiment
+    if change_pct < -0.2: return -1 # Negative sentiment
+    return 0 # Neutral
 
 def get_asian_individual_points(change_pct):
-    if change_pct > 0.2: return 1
-    if change_pct < -0.2: return -1
-    return 0
+    """ Assigns points based on an individual Asian market index's live morning percentage change. """
+    if change_pct > 0.2: return 1  # Positive sentiment
+    if change_pct < -0.2: return -1 # Negative sentiment
+    return 0 # Neutral
 
 def india_vix_points(vix_level):
+    """ Assigns points based on the India VIX level. """
     if vix_level == 0: return 0
-    if vix_level > 22: return -2 # Increased fear (Doc1 suggests >20-23, Doc2 Source 403)
-    if vix_level < 14: return 1  # Lower fear/complacency (Doc1 suggests <15, Doc2 Source 404)
-    return 0
+    if vix_level > 22: return -2  # High fear (Sources: Doc1 pg5,10,12; Doc2 Sec IV.B)
+    if vix_level < 14: return 1   # Low fear/complacency (Sources: Doc1 pg5,10,12; Doc2 Sec IV.B)
+    return 0 # Neutral range
 
 def cboe_vix_points(cboe_vix_change_pct):
-    if cboe_vix_change_pct > 7: return -1 # Significant spike in US VIX (Doc1 Source 92)
-    if cboe_vix_change_pct < -7: return 1
+    """ Assigns points based on the CBOE VIX's overnight percentage change. """
+    if cboe_vix_change_pct > 7: return -1 # Significant spike indicates global fear (Doc1 pg5,10)
+    if cboe_vix_change_pct < -7: return 1  # Significant drop indicates easing fear
     return 0
 
 def pcr_points(pcr_value):
+    """ Assigns points based on Nifty PCR (Put-Call Ratio), including contrarian signals. """
     if pcr_value == 0: return 0
-    if pcr_value > 1.7: return 1    # Contrarian Bullish (Oversold) (Doc1 Src 109,111, Doc2 Src 423)
-    if 1.3 < pcr_value <= 1.7: return -1 # Bearish (Doc1 Src 113)
+    if pcr_value > 1.7: return 1    # Contrarian Bullish: Oversold (Doc1 pg6,10,13; Doc2 Sec IV.D)
+    if 1.3 < pcr_value <= 1.7: return -1 # Bearish
     if 0.7 <= pcr_value <= 1.3: return 0  # Neutral
-    if 0.5 <= pcr_value < 0.7: return 1   # Bullish (Doc1 Src 109)
-    if pcr_value < 0.5: return -1     # Contrarian Bearish (Overbought/Complacency) (Doc1 Src 113, Doc2 Src 426)
+    if 0.5 <= pcr_value < 0.7: return 1   # Bullish
+    if pcr_value < 0.5: return -1     # Contrarian Bearish: Overbought/Complacency
     return 0
 
 def fii_dii_points(net_flow_crores, is_fii=True):
-    threshold = 1000 if is_fii else 750 # FII threshold 1000 Cr, DII 750 Cr (Doc1 Src 18, 21)
-    if net_flow_crores > threshold: return 1
-    if net_flow_crores < -threshold: return -1
+    """ Assigns points based on FII or DII net investment flows. """
+    threshold = 1000 if is_fii else 750 # FII threshold 1000 Cr, DII 750 Cr (Doc1 pg2,10)
+    if net_flow_crores > threshold: return 1  # Significant net buying
+    if net_flow_crores < -threshold: return -1 # Significant net selling
     return 0
 
 def crude_oil_points(change_pct):
-    if change_pct > 1.5: return -1 # Rising crude negative (Doc1 Src 48, threshold adjusted)
-    if change_pct < -1.5: return 1  # Falling crude positive (Doc1 Src 50)
+    """ Assigns points based on Brent Crude oil's overnight percentage change. """
+    if change_pct > 1.5: return -1 # Rising crude is negative for India (Doc1 pg3,10,12)
+    if change_pct < -1.5: return 1  # Falling crude is positive
     return 0
 
 def gold_points(change_pct):
-    if change_pct > 1: return -1 # Rising gold signals risk aversion (Doc1 Src 54)
-    if change_pct < -1: return 1 # Falling gold signals risk-on
+    """ Assigns points based on Gold's overnight percentage change. """
+    if change_pct > 1.0: return -1 # Rising gold signals risk aversion (Doc1 pg3-4,10,12)
+    if change_pct < -1.0: return 1 # Falling gold signals risk-on
     return 0
 
-def usd_inr_fx_points(change_pct): # % change in USD/INR; positive means INR depreciated
-    if change_pct > 0.25: return -1 # Rupee depreciation (Doc1 Src 67, threshold adjusted)
-    if change_pct < -0.25: return 1 # Rupee appreciation (Doc1 Src 63)
+def usd_inr_fx_points(change_pct):
+    """ Assigns points based on USD/INR percentage change. Positive change_pct = INR depreciation. """
+    if change_pct > 0.25: return -1 # Significant Rupee depreciation is negative (Doc1 pg4,10,12)
+    if change_pct < -0.25: return 1 # Significant Rupee appreciation is positive
     return 0
 
-def news_sentiment_points(sentiment_str):
-    mapping = {"Very Positive": 2, "Positive": 1, "Neutral": 0, "Negative": -1, "Very Negative": -2}
-    return mapping.get(sentiment_str, 0)
-
-def major_event_points(event_impact_str):
-    mapping = {"Strongly Positive": 2, "Positive": 1, "Neutral": 0, "Negative": -1, "Strongly Negative": -2}
-    return mapping.get(event_impact_str, 0)
-
-def previous_day_tech_points(tech_setup_str):
-    mapping = {"Strongly Bullish": 2, "Bullish": 1, "Neutral": 0, "Bearish": -1, "Strongly Bearish": -2}
-    return mapping.get(tech_setup_str, 0)
-
+# Removed qualitative factor functions:
+# news_sentiment_points
+# major_event_points
+# previous_day_tech_points
 
 def aggregate_sentiment(score):
-    # Adjusted thresholds based on a wider potential score range (~max +22 to -22)
-    if score >= 8: return "Strongly Bullish"     # Roughly top 25-30% of positive range
-    if score >= 3: return "Mildly Bullish"       # Next 30-35%
-    if score <= -8: return "Strongly Bearish"
-    if score <= -3: return "Mildly Bearish"
+    """ Aggregates the composite score into a sentiment category. Thresholds adjusted for wider score range. """
+    # Score range is now smaller as 3 factors (max 2 points each) are removed. Max possible change is -6 to +6.
+    # Original range was ~-22 to +22. New range approx -16 to +16.
+    # Adjusting thresholds:
+    if score >= 6: return "Strongly Bullish" # Adjusted from 8
+    if score >= 2: return "Mildly Bullish"   # Adjusted from 3
+    if score <= -6: return "Strongly Bearish" # Adjusted from -8
+    if score <= -2: return "Mildly Bearish"   # Adjusted from -3
     return "Neutral / Range-bound"
 
-# ---------- New: scenario probabilities + narrative (Adjusted thresholds) ---------- #
+# ---------- Scenario probabilities + Narrative (Adjusted thresholds) ---------- #
 def scenario_probs(score):
-    if score >= 8:   return {"Up": 70, "Side": 20, "Down": 10}
-    if score >= 3:   return {"Up": 55, "Side": 30, "Down": 15}
-    if score <= -8:  return {"Up": 10, "Side": 20, "Down": 70}
-    if score <= -3:  return {"Up": 15, "Side": 30, "Down": 55}
+    """ Provides indicative probabilities for Up, Side, Down scenarios based on the score. """
+    # Adjusting thresholds based on new score range:
+    if score >= 6:   return {"Up": 70, "Side": 20, "Down": 10} # Adjusted from 8
+    if score >= 2:   return {"Up": 55, "Side": 30, "Down": 15} # Adjusted from 3
+    if score <= -6:  return {"Up": 10, "Side": 20, "Down": 70} # Adjusted from -8
+    if score <= -2:  return {"Up": 15, "Side": 30, "Down": 55} # Adjusted from -3
     return {"Up": 33, "Side": 34, "Down": 33} # Neutral
 
 def build_report(tag_open, tag_sent, score, probs, factors, hi_reward_dii_vix, bear_trap_fii_pcr, oversold_bounce_risk):
+    """ Builds the markdown report for the sentiment analysis. """
     primary_scenario = max(probs, key=probs.get)
-    # Ensure alt_scenario logic handles cases where multiple scenarios have the min probability
     min_prob = min(probs.values())
     alt_scenarios = [k for k, v in probs.items() if v == min_prob]
-    alt_scenario_text = " or ".join(alt_scenarios) # Handles multiple alternate scenarios if probs are equal
+    alt_scenario_text = " or ".join(alt_scenarios)
 
     md_report = f"### {tag_open} → **{tag_sent}** \n"
     md_report += f"Composite Sentiment Score: **{score:+}** (details below).  \n\n"
@@ -120,7 +131,7 @@ def build_report(tag_open, tag_sent, score, probs, factors, hi_reward_dii_vix, b
     if bear_trap_fii_pcr:
         md_report += "⚠️ *Bear-Trap Risk*: Notable FII selling combined with a very low Nifty PCR (<0.7) might signal overdone pessimism or retail shorting; susceptible to sharp short-covering rallies.\n"
         conditions_noted = True
-    if oversold_bounce_risk:
+    if oversold_bounce_risk: # (Doc2 Sec IV.D, last para)
         md_report += "🔄 *Oversold Bounce Risk?*: A very high Nifty PCR (>1.7) coupled with an elevated India VIX (>20) can suggest extreme pessimism, potentially setting the stage for a technical rebound or short covering.\n"
         conditions_noted = True
     if not conditions_noted:
@@ -130,20 +141,20 @@ def build_report(tag_open, tag_sent, score, probs, factors, hi_reward_dii_vix, b
     return md_report
 
 # ---------- Streamlit UI ---------- #
-st.set_page_config(layout="wide")
-st.title("Nifty 50 Pre-Market Sentiment Analyzer")
-st.caption("Based on factors from provided research documents. All interpretations are indicative.")
+st.set_page_config(layout="wide") # Use wide layout for more space
+st.title("Nifty 50 Pre-Market Sentiment Analyzer (Objective)") # Updated Title
+st.caption("Based on quantitative factors from provided research documents. All interpretations are indicative and for educational purposes.")
 
-# Clarity Tracking (Optional - can be removed if not needed)
-# components.html("""<script>/* clarity tag trimmed */</script>""", height=0)
+# Clarity Tracking (Optional)
+# components.html("""<script>/* clarity.js script here if you have one */</script>""", height=0)
 
 with st.form("sentiment_form"):
     st.subheader("Market Data & Global Cues")
     col1, col2, col3 = st.columns(3)
     with col1:
-        nifty_prev_close = st.number_input("Nifty 50 Previous Close (Spot)", min_value=0.0, step=0.01, value=22000.0)
-        futures_prev_close = st.number_input("Nifty Futures Previous Close", min_value=0.0, step=0.01, value=22050.0)
-        gift_nifty_current = st.number_input("GIFT Nifty Current Value (around 8:45 AM IST)", min_value=0.0, step=0.01, value=22100.0)
+        nifty_prev_close = st.number_input("Nifty 50 Previous Close (Spot)", min_value=0.0, step=0.01, value=22000.00)
+        futures_prev_close = st.number_input("Nifty Futures Previous Close", min_value=0.0, step=0.01, value=22050.00)
+        gift_nifty_current = st.number_input("GIFT Nifty Current Value (around 8:45 AM IST)", min_value=0.0, step=0.01, value=22100.00)
 
     with col2:
         dji_change_pct = st.number_input("Dow Jones % Change (Overnight)", step=0.01, format="%.2f", value=0.10)
@@ -158,9 +169,10 @@ with st.form("sentiment_form"):
     st.subheader("Commodities, FX & Volatility (India)")
     col4, col5, col6 = st.columns(3)
     with col4:
-        crude_oil_change_pct = st.number_input("Brent Crude % Change (Overnight)", step=0.01, format="%.2f", value=-0.5)
+        crude_oil_change_pct = st.number_input("Brent Crude % Change (Overnight)", step=0.01, format="%.2f", value=-0.50)
+        india_vix_level = st.number_input("India VIX Closing Level", min_value=0.0, step=0.01, value=15.50, format="%.2f")
     with col5:
-        gold_change_pct = st.number_input("Gold % Change (Overnight)", step=0.01, format="%.2f", value=0.2)
+        gold_change_pct = st.number_input("Gold % Change (Overnight)", step=0.01, format="%.2f", value=0.20)
     with col6:
         usd_inr_change_pct = st.number_input("USD/INR % Change (Spot Overnight/Early)", step=0.01, format="%.2f", help="Positive value means INR depreciated", value=0.05)
 
@@ -171,21 +183,11 @@ with st.form("sentiment_form"):
     with col8:
         dii_net_crores = st.number_input("DII Net Investment (₹ Crores)", step=1.0, format="%.0f", value=300.0)
     with col9:
-        nifty_pcr_value = st.number_input("Nifty PCR (OI-based)", min_value=0.0, step=0.01, value=1.0, format="%.2f")
-        india_vix_level = st.number_input("India VIX Closing Level", step=0.01, value=15.5, format="%.2f")
+        nifty_pcr_value = st.number_input("Nifty PCR (OI-based)", min_value=0.0, step=0.01, value=1.00, format="%.2f")
 
-
-    st.subheader("Qualitative Factors")
-    col10, col11, col12 = st.columns(3)
-    with col10:
-        news_sentiment_str = st.selectbox("Overall News Sentiment (Overnight & Morning)",
-                                          ["Neutral", "Positive", "Very Positive", "Negative", "Very Negative"])
-    with col11:
-        major_event_impact_str = st.selectbox("Major Overnight Geopolitical/Economic Event Impact",
-                                             ["Neutral", "Positive", "Strongly Positive", "Negative", "Strongly Negative"])
-    with col12:
-        tech_setup_str = st.selectbox("Previous Day's Nifty Technical Setup",
-                                      ["Neutral", "Bullish", "Strongly Bullish", "Bearish", "Strongly Bearish"])
+    # Removed Qualitative Factors UI section
+    # st.subheader("Qualitative Factors")
+    # col10, col11, col12 = st.columns(3) ...
 
     submitted = st.form_submit_button("Analyze Nifty Sentiment")
 
@@ -194,7 +196,7 @@ if submitted:
     pt_dji = get_us_individual_points(dji_change_pct)
     pt_sp500 = get_us_individual_points(sp500_change_pct)
     pt_nasdaq = get_us_individual_points(nasdaq_change_pct)
-    us_market_total_pts = pt_dji + pt_sp500 + pt_nasdaq # Combined for simplicity in factor list
+    us_market_total_pts = pt_dji + pt_sp500 + pt_nasdaq
 
     pt_nikkei = get_asian_individual_points(nikkei_change_pct)
     pt_hangseng = get_asian_individual_points(hangseng_change_pct)
@@ -208,15 +210,14 @@ if submitted:
     pt_dii = fii_dii_points(dii_net_crores, is_fii=False)
     pt_crude = crude_oil_points(crude_oil_change_pct)
     pt_fx = usd_inr_fx_points(usd_inr_change_pct)
-    pt_news = news_sentiment_points(news_sentiment_str)
-    pt_event = major_event_points(major_event_impact_str)
-    pt_tech = previous_day_tech_points(tech_setup_str)
+    # Removed points from qualitative factors:
+    # pt_news, pt_event, pt_tech
 
-    # Common points for both Spot and Futures analysis (excluding opening gap)
+    # Common points for both Spot and Futures analysis (excluding opening gap points)
     pts_common_factors = (us_market_total_pts + asian_market_total_pts +
                           pt_gold + pt_cboe_vix + pt_india_vix + pt_pcr +
-                          pt_fii + pt_dii + pt_crude + pt_fx +
-                          pt_news + pt_event + pt_tech)
+                          pt_fii + pt_dii + pt_crude + pt_fx)
+                          # Removed pt_news, pt_event, pt_tech from sum
 
     # Spot Analysis
     spot_opening_classification, spot_opening_pts = classify_market_opening(nifty_prev_close, gift_nifty_current)
@@ -230,9 +231,9 @@ if submitted:
     futures_overall_sentiment = aggregate_sentiment(futures_final_score)
     futures_scenario_probabilities = scenario_probs(futures_final_score)
 
-    # Factor list for display
+    # Base factor list for display - common elements
     base_factors_display = {
-        "GIFT Nifty Implied Opening": spot_opening_pts, # Will be overwritten for futures report
+        "GIFT Nifty Implied Opening": 0, # Placeholder
         "US Markets (Dow, S&P, Nasdaq)": us_market_total_pts,
         "Asian Markets (Nikkei, Hang Seng)": asian_market_total_pts,
         "India VIX Level": pt_india_vix,
@@ -243,21 +244,24 @@ if submitted:
         "Gold Change": pt_gold,
         "USD/INR Change": pt_fx,
         "CBOE VIX Change": pt_cboe_vix,
-        "News Sentiment": pt_news,
-        "Major Event Impact": pt_event,
-        "Previous Day Technicals": pt_tech
+        # Removed qualitative factors from display list:
+        # "News Sentiment": pt_news,
+        # "Major Event Impact": pt_event,
+        # "Previous Day Technicals": pt_tech
     }
 
-    # Special conditions
+    # Special conditions check
     dii_buying_high_vix = (dii_net_crores > 0 and india_vix_level > 22)
-    fii_selling_low_pcr = (fii_net_crores < 0 and nifty_pcr_value < 0.7)
+    fii_selling_low_pcr = (fii_net_crores < -750 and nifty_pcr_value < 0.7)
     pcr_high_vix_high = (nifty_pcr_value > 1.7 and india_vix_level > 20)
 
 
     if spot_overall_sentiment == futures_overall_sentiment and spot_opening_classification == futures_opening_classification:
         st.subheader("Consolidated Nifty Sentiment (Spot & Futures Aligned)")
+        consolidated_factors = base_factors_display.copy()
+        consolidated_factors["GIFT Nifty Implied Opening"] = spot_opening_pts
         st.markdown(build_report(spot_opening_classification, spot_overall_sentiment, spot_final_score,
-                                 spot_scenario_probabilities, base_factors_display,
+                                 spot_scenario_probabilities, consolidated_factors,
                                  dii_buying_high_vix, fii_selling_low_pcr, pcr_high_vix_high))
     else:
         st.subheader("Nifty Spot Sentiment Analysis")
@@ -274,5 +278,5 @@ if submitted:
                                  futures_scenario_probabilities, futures_factors_display,
                                  dii_buying_high_vix, fii_selling_low_pcr, pcr_high_vix_high))
 
-    st.caption("Disclaimer: This is an indicative tool based on a simplified model and selected factors from research. Probabilities and sentiment aggregations are estimates and should be adjusted with experience and further data. Always conduct your own due diligence before making any trading or investment decisions.")
+    st.caption("Disclaimer: This is an indicative tool based on a simplified model and selected quantitative factors from the provided research. Probabilities and sentiment aggregations are estimates and should be adjusted with experience and further data. Always conduct your own comprehensive research and due diligence before making any trading or investment decisions.")
 
