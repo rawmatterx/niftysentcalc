@@ -2,173 +2,107 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 def classify_market_opening(previous_close, sgx_nifty_value):
-    """
-    Classify the market opening sentiment based on the percentage difference 
-    between the previous close (spot or futures) and the SGX Nifty value.
-
-    Thresholds:
-        - If |% difference| < 0.2%: "Flat Opening"
-        - If % difference is between 0.2% and 0.5%: "Gap Up Opening" or "Gap Down Opening"
-        - If |% difference| > 0.5%: "Huge Gap Up Opening" or "Huge Gap Down Opening"
-    """
     if previous_close == 0:
         return "Data Error: Previous close cannot be zero."
     
     percentage_diff = (sgx_nifty_value - previous_close) / previous_close * 100
-
     flat_threshold = 0.2
     gap_threshold = 0.5
 
     if abs(percentage_diff) < flat_threshold:
         return "Flat Opening"
     elif abs(percentage_diff) <= gap_threshold:
-        if percentage_diff > 0:
-            return "Gap Up Opening"
-        else:
-            return "Gap Down Opening"
+        return "Gap Up Opening" if percentage_diff > 0 else "Gap Down Opening"
     else:
-        if percentage_diff > 0:
-            return "Huge Gap Up Opening"
-        else:
-            return "Huge Gap Down Opening"
-
+        return "Huge Gap Up Opening" if percentage_diff > 0 else "Huge Gap Down Opening"
 
 def get_dji_sentiment(change_percentage):
-    """
-    Determine the DJI sentiment with a small neutral band.
-    """
-    neutral_band = 0.1  # changes within ±0.1% are neutral
+    neutral_band = 0.1
     if change_percentage > neutral_band:
         return "Positive Sentiment"
     elif change_percentage < -neutral_band:
         return "Negative Sentiment"
-    else:
-        return "Neutral Sentiment"
-
+    return "Neutral Sentiment"
 
 def calculate_close_point(previous_close, change_percentage):
-    """
-    Calculate the expected close point based on the given previous close 
-    and the DJI change percentage.
-    """
     return previous_close * (1 + (change_percentage / 100))
 
-
 def determine_market_movement(open_point, close_point):
-    """
-    Determine expected intraday market movement based on percentage difference.
-    Threshold:
-        >1.5%: Bullish Movement
-        < -1.5%: Bearish Movement
-        Otherwise: Sideways/Volatile Movement
-    """
     if open_point == 0:
         return "Data Error: Open point cannot be zero."
-
-    difference = close_point - open_point
-    pct_change = (difference / open_point) * 100
-
-    bullish_threshold = 1.0
-    bearish_threshold = -1.0
-
-    if pct_change > bullish_threshold:
+    
+    pct_change = ((close_point - open_point) / open_point) * 100
+    if pct_change > 1.0:
         return "Bullish Movement"
-    elif pct_change < bearish_threshold:
+    elif pct_change < -1.0:
         return "Bearish Movement"
-    else:
-        return "Sideways/Volatile Movement"
+    return "Sideways/Volatile Movement"
 
+def get_market_sentiment(nifty_close, sgx_value, dji_change, vix, dii_buy, fii_net, pcr):
+    opening = classify_market_opening(nifty_close, sgx_value)
+    dji_sent = get_dji_sentiment(dji_change)
+    close_pt = calculate_close_point(nifty_close, dji_change)
+    movement = determine_market_movement(sgx_value, close_pt)
+    
+    high_reward = dii_buy and vix > 25
+    bear_trap = fii_net < 0 and pcr < 0.8
+    
+    return opening, movement, dji_sent, high_reward, bear_trap
 
-def get_market_sentiment(nifty50_close, sgx_nifty_value, dji_change_percentage):
-    """
-    Get the overall market sentiment based on the provided data points.
-    Returns a tuple of (opening_sentiment, movement_sentiment, dji_sentiment).
-    """
-    market_opening_sentiment = classify_market_opening(nifty50_close, sgx_nifty_value)
-    dji_sentiment = get_dji_sentiment(dji_change_percentage)
-    close_point = calculate_close_point(nifty50_close, dji_change_percentage)
-    market_movement = determine_market_movement(sgx_nifty_value, close_point)
-    return market_opening_sentiment, market_movement, dji_sentiment
-
-
-# ---------------------------------------
-# Streamlit Web App
-# ---------------------------------------
-
+# Streamlit UI
 st.title("Nifty 50 Sentiment Analyzer - Web Calculator")
 
-# Add Microsoft Clarity tracking code
-components.html(
-    """
-    <script type="text/javascript">
-        (function(c,l,a,r,i,t,y){
-            c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
-            t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
-            y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
-        })(window, document, "clarity", "script", "p1n8m63pzi");
-    </script>
-    """,
-    height=0
-)
+components.html("""
+<script type="text/javascript">
+    (function(c,l,a,r,i,t,y){
+        c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+    })(window, document, "clarity", "script", "p1n8m63pzi");
+</script>
+""", height=0)
 
-st.write("Enter the required data points to analyze the Nifty 50 sentiment:")
+with st.form("sentiment_form"):
+    col1, col2 = st.columns(2)
+    with col1:
+        nifty_close = st.number_input("Nifty 50 Previous Close (Spot):", min_value=0.0, step=0.01)
+        futures_close = st.number_input("Nifty Futures Previous Close:", min_value=0.0, step=0.01)
+        sgx_value = st.number_input("SGX Nifty at 8:45 AM:", min_value=0.0, step=0.01)
+        
+    with col2:
+        dji_change = st.number_input("DJI Change (%):", step=0.01)
+        vix = st.number_input("India VIX:", min_value=0.0, step=0.01)
+        dii_buy = st.checkbox("DII Net Buying Today")
+        fii_net = st.number_input("FII Net Activity (₹ Cr):", help="Negative = Net Selling")
+        pcr = st.number_input("PCR Ratio:", min_value=0.0, step=0.01, value=1.0)
+    
+    analyze_btn = st.form_submit_button("Analyze Market Sentiment")
 
-nifty50_close = st.number_input(
-    "Enter Nifty 50 Previous Close Value (Spot):",
-    min_value=0.0, 
-    step=0.01,
-    help="This is the previous day's closing value of the Nifty 50 spot index."
-)
-
-futures_close = st.number_input(
-    "Enter Nifty 50 Current Month Futures Previous Close Value:",
-    min_value=0.0, 
-    step=0.01,
-    help="This is the previous day's closing value of the Nifty 50 current month futures contract."
-)
-
-sgx_nifty_value = st.number_input(
-    "Enter SGX Nifty Value at 8:45 AM:",
-    min_value=0.0, 
-    step=0.01,
-    help="This is the indicative opening value from SGX Nifty futures at 8:45 AM."
-)
-
-dji_change_percentage = st.number_input(
-    "Enter Dow Jones Industrial Average (DJI) Previous Day Change Percentage:",
-    step=0.01,
-    help="This is the previous day's percentage change in the DJI index. For example, 0.5 for +0.5%."
-)
-
-if st.button("Analyze Nifty 50 Sentiment"):
-    # Validate inputs
-    if nifty50_close == 0:
-        st.write("The previous close of Nifty 50 spot cannot be zero. Please enter a valid number.")
-    elif futures_close == 0:
-        st.write("The previous close of Nifty Futures cannot be zero. Please enter a valid number.")
+if analyze_btn:
+    if 0 in {nifty_close, futures_close}:
+        st.error("Previous close values cannot be zero")
     else:
-        # Scenario 1 (Spot)
-        spot_open, spot_movement, spot_dji = get_market_sentiment(nifty50_close, sgx_nifty_value, dji_change_percentage)
-        # Scenario 2 (Futures)
-        futures_open, futures_movement, futures_dji = get_market_sentiment(futures_close, sgx_nifty_value, dji_change_percentage)
-        
-        # Check if both scenarios are the same
-        same_scenario = (spot_open == futures_open and
-                         spot_movement == futures_movement and
-                         spot_dji == futures_dji)
-        
-        if same_scenario:
-            # Both scenarios yield the same result
-            st.write(f"Today, I am expecting a {spot_open} in the market after which a {spot_movement} with {spot_dji}.")
-        else:
-            # Different scenarios
-            # Format: 
-            # Today, I am expecting a <spot_open> in the market after which a <spot_movement> with <spot_dji> 
-            # or its a <futures_open> after which a <futures_movement> with <futures_dji>.
-            st.write(
-                f"Today, I am expecting a {spot_open} in the market after which a {spot_movement} with {spot_dji} "
-                f"or its a {futures_open} after which a {futures_movement} with {futures_dji}."
-            )
+        # Get sentiment for both spot and futures
+        spot_open, spot_move, spot_dji, hr_spot, bt_spot = get_market_sentiment(
+            nifty_close, sgx_value, dji_change, vix, dii_buy, fii_net, pcr
+        )
+        fut_open, fut_move, fut_dji, hr_fut, bt_fut = get_market_sentiment(
+            futures_close, sgx_value, dji_change, vix, dii_buy, fii_net, pcr
+        )
 
-        st.write("**Note:** This analysis is for informational purposes only and not investment advice.")
+        # Display predictions
+        if spot_open == fut_open and spot_move == fut_move:
+            st.success(f"**Consensus Prediction:** {spot_open} → {spot_move} ({spot_dji})")
+        else:
+            st.warning(f"**Spot Scenario:** {spot_open} → {spot_move} ({spot_dji})")
+            st.warning(f"**Futures Scenario:** {fut_open} → {fut_move} ({fut_dji})")
+
+        # Display advanced signals
+        if hr_spot or hr_fut:
+            st.success("**High-Reward Signal:** DII buying + VIX >25 detected")
+        if bt_spot or bt_fut:
+            st.warning("**Bear Trap Alert:** FII selling + PCR <0.8 detected")
+        
+        st.markdown("---")
+        st.caption("**Note:** This analysis combines technical indicators with institutional activity patterns. Always verify with fundamental analysis.")
 
